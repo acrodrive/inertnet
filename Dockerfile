@@ -1,21 +1,36 @@
-# RunPod / RTX 4090 (Ada, sm_89). CUDA 12.4 + PyTorch 2.4+.
+# InertNet — dependency image for RunPod / RTX 4090 (Ada, sm_89).
+#
+# This image bakes the Python deps ONLY. Code + data + outputs live on the
+# RunPod network volume (mounted at /workspace), so the image never needs a
+# rebuild when the model changes — you `git pull` on the pod instead.
+#
+#   Build & push once:
+#     docker build -t <you>/inertnet:deps .
+#     docker push <you>/inertnet:deps
+#
+#   On a fresh pod (network volume at /workspace), bootstrap once:
+#     cd /workspace && git clone https://github.com/acrodrive/inertnet.git \
+#       && bash inertnet/scripts/pod_setup.sh
+#   After that, `bash scripts/pod_setup.sh` just pulls + relinks.
+
 FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
 
-ENV DEBIAN_FRONTEND=noninteractive PYTHONUNBUFFERED=1
-WORKDIR /workspace/mambahybrid
+ENV DEBIAN_FRONTEND=noninteractive \
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1 \
+    HF_HUB_DISABLE_TELEMETRY=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git build-essential ninja-build && \
     rm -rf /var/lib/apt/lists/*
 
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# Deps only — no application code is copied in.
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt
 
-# Optional fused kernels (safe to remove if the build is slow / unneeeded):
-# RUN pip install --no-cache-dir causal-conv1d>=1.4.0 mamba-ssm>=2.2.2
+# Optional fused Mamba kernels (needs this -devel base for nvcc). Uncomment to
+# bake them in; adds a few minutes to the build.
+# RUN pip install "causal-conv1d>=1.4.0" "mamba-ssm>=2.2.2"
 
-COPY . .
-ENV PYTHONPATH=/workspace/mambahybrid/src
-
-# Data is mounted at runtime, e.g. -v /runpod-volume/waymo:/workspace/mambahybrid/dataset/Waymo
-CMD ["python", "-m", "mambahybrid.train", "--config", "configs/default.yaml"]
+WORKDIR /workspace
+CMD ["bash"]

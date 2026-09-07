@@ -64,6 +64,10 @@ class Config:
     amp: bool = True
     device: str = "cuda"
 
+    # ---- logging ----
+    wandb: bool = False
+    wandb_project: str = "inertnet"
+
     def preprocess(self) -> PreprocessConfig:
         return PreprocessConfig(
             n_slots=self.n_slots,

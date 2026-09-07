@@ -5,6 +5,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
 import os
@@ -67,6 +68,15 @@ def main():
     cfg.dump(os.path.join(cfg.ckpt_dir, "config.yaml"))
     log_fh = open(os.path.join(cfg.ckpt_dir, "log.jsonl"), "a")
 
+    run = None
+    if cfg.wandb:
+        import wandb
+        run = wandb.init(
+            project=cfg.wandb_project, name=os.path.basename(cfg.ckpt_dir.rstrip("/")),
+            config=dict(cfg.__dict__), resume="allow",
+            id=hashlib.sha1(cfg.ckpt_dir.encode()).hexdigest()[:16],
+        )
+
     pc = cfg.preprocess()
     train_ds = WOMDDataset(cfg.train_shards, pc, "train", cfg.cache_dir, cfg.seed)
     val_ds = WOMDDataset(cfg.val_shards, pc, "val", cfg.cache_dir, cfg.seed)
@@ -88,6 +98,8 @@ def main():
     scaler = torch.amp.GradScaler("cuda", enabled=cfg.amp and device == "cuda")
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model params: {n_params/1e6:.2f} M")
+    if run is not None:
+        run.summary["n_params_M"] = n_params / 1e6
 
     step = 0
     if args.resume:
@@ -130,6 +142,10 @@ def main():
                   f"| {rec['it_s']:.2f} it/s")
             log_fh.write(json.dumps(rec) + "\n")
             log_fh.flush()
+            if run is not None:
+                run.log({"train/lr": rec["lr"], "train/it_s": rec["it_s"],
+                         **{f"train/{k}": v for k, v in rec.items()
+                            if k not in ("step", "lr", "it_s")}}, step=step)
             t0 = time.time()
 
         if step % cfg.val_every == 0:
@@ -138,6 +154,8 @@ def main():
             print(f"  [val] " + "  ".join(f"{k}={v:.3f}" for k, v in metrics.items() if k != "step"))
             log_fh.write(json.dumps({"val": metrics}) + "\n")
             log_fh.flush()
+            if run is not None:
+                run.log({f"val/{k}": v for k, v in metrics.items() if k != "step"}, step=step)
             torch.save({"model": model.state_dict(), "opt": opt.state_dict(), "step": step,
                         "cfg": cfg.__dict__}, os.path.join(cfg.ckpt_dir, "last.pt"))
             key = metrics.get("all/minADE", math.inf)
@@ -148,6 +166,8 @@ def main():
             t0 = time.time()
 
     log_fh.close()
+    if run is not None:
+        run.finish()
 
 
 if __name__ == "__main__":

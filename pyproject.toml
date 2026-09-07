@@ -16,6 +16,9 @@ dependencies = [
     "blackboxprotobuf>=1.0.1",
 ]
 
+[project.optional-dependencies]
+track = ["wandb>=0.16"]
+
 [tool.setuptools.packages.find]
 where = ["src"]
 

@@ -4,7 +4,10 @@
 # ---- data ----
 train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
 val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
-cache_dir: "cache"
+cache_dir: null             # per-scenario .npz cache. null = off (workers re-parse
+                            # protos each epoch — cheap at this model speed, and the
+                            # cache would be ~250 GB for a 100-shard subset). Set to a
+                            # path under /workspace only if data loading is CPU-bound.
 n_slots: 300
 fov_radius: 100.0
 max_map_tokens: 256
@@ -54,3 +57,7 @@ num_workers: 6
 seed: 0
 amp: true
 device: "cuda"
+
+# ---- logging ----
+wandb: true                 # needs `pip install wandb` + `wandb login` on the pod
+wandb_project: "inertnet"

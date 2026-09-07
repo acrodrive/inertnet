@@ -1,14 +1,20 @@
-# Core (CPU or CUDA). On RunPod/4090 install the CUDA build of torch first:
-#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+# ── Core runtime (CPU or CUDA) ──────────────────────────────────────────────
+# The RunPod PyTorch base image already ships the CUDA build of torch.
+# Locally:  pip install torch --index-url https://download.pytorch.org/whl/cpu
 torch>=2.4
 numpy>=1.26
 pyyaml>=6.0
-tqdm>=4.66
 einops>=0.7
+tqdm>=4.66
 
-# WOMD parsing (no TensorFlow dependency)
+# WOMD Scenario protobuf parsing — no TensorFlow / waymo-open-dataset needed.
 blackboxprotobuf>=1.0.1
 
-# Optional: fused Mamba kernels. The model runs without these (pure-torch
-# MambaBlock), but they are ~10x faster for the recurrence on GPU.
+# Experiment tracking. train.py imports it lazily, so it is only needed when
+# `wandb: true` in the config. Run `wandb login` once per pod.
+wandb>=0.16
+
+# ── Optional: fused Mamba CUDA kernels ──────────────────────────────────────
+# ~10x faster recurrence on GPU; the pure-torch MambaBlock works without them.
+# Needs the -devel base image (nvcc) to build.
 #   pip install mamba-ssm causal-conv1d

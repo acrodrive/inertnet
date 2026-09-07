@@ -2,7 +2,7 @@
 # self-attention over past inputs. This is the model the thesis argues against.
 train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
 val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
-cache_dir: "cache"
+cache_dir: null             # see configs/default.yaml
 n_slots: 300
 max_map_tokens: 256
 
@@ -22,3 +22,5 @@ lr: 3.0e-4
 max_steps: 120000
 ckpt_dir: "runs/ablation_attn"
 device: "cuda"
+wandb: true
+wandb_project: "inertnet"

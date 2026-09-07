@@ -47,17 +47,29 @@ dataset/Waymo/training/training.tfrecord-XXXXX-of-01000
 Local smoke test (CPU):
 
 ```
-pip install -r requirements.txt
+pip install -e .
 PYTHONPATH=src python tests/test_pipeline.py
 ```
 
-Train on RunPod / RTX 4090:
+Train on RunPod / RTX 4090. The Docker image bakes **deps only**; code, data and
+outputs live on the network volume (mounted at `/workspace`), so the image is
+built once and the model is updated with `git pull`:
 
 ```
-docker build -t mambahybrid .
-docker run --gpus all -v /runpod-volume/waymo:/workspace/mambahybrid/dataset/Waymo \
-  mambahybrid python -m mambahybrid.train --config configs/default.yaml
+# build & push the deps image once
+docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
+
+# on a fresh pod (network volume at /workspace), bootstrap once:
+cd /workspace && git clone https://github.com/acrodrive/inertnet.git \
+  && bash inertnet/scripts/pod_setup.sh          # later: just re-run pod_setup.sh
+wandb login
+#   data -> /workspace/inertnet/dataset/Waymo/training/training.tfrecord-*
+python -m mambahybrid.train --config configs/default.yaml
 ```
+
+Monitoring: set `wandb: true` in the config (already on in `configs/*.yaml`).
+Runs log to project `inertnet`; the wandb run id is derived from `ckpt_dir`, so
+`--resume runs/exp1/last.pt` reattaches to the same run after a pod restart.
 
 Ablation (the key comparison — Mamba removed):
 
