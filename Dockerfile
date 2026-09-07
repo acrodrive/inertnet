@@ -1,24 +1,22 @@
-# InertNet — dependency image for RunPod / RTX 4090 (Ada, sm_89).
+# InertNet — optional dependency image for RunPod / RTX 4090 (Ada, sm_89).
 #
-# This image bakes the Python deps ONLY. Code + data + outputs live on the
-# RunPod network volume (mounted at /workspace), so the image never needs a
-# rebuild when the model changes — you `git pull` on the pod instead.
+# You usually DON'T need this: a stock RunPod "PyTorch" template already has
+# CUDA + sshd, and `scripts/pod_setup.sh` installs the rest onto the network
+# volume (with the pip cache on /workspace, so it's only slow on the first pod).
 #
-#   Build & push once:
-#     docker build -t <you>/inertnet:deps .
-#     docker push <you>/inertnet:deps
+# Build this only if you want faster pod cold-starts. It bakes deps ONLY — code,
+# data and outputs live on the network volume (mounted at /workspace), updated
+# with `git pull`, never an image rebuild. If you run it directly as a RunPod
+# pod you must add RunPod's SSH setup yourself (openssh-server + a start script
+# that injects $PUBLIC_KEY and keeps the container alive).
 #
-#   On a fresh pod (network volume at /workspace), bootstrap once:
-#     cd /workspace && git clone https://github.com/acrodrive/inertnet.git \
-#       && bash inertnet/scripts/pod_setup.sh
-#   After that, `bash scripts/pod_setup.sh` just pulls + relinks.
+#   docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
 
 FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
-    PIP_NO_CACHE_DIR=1 \
-    HF_HUB_DISABLE_TELEMETRY=1
+    PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
         git build-essential ninja-build && \
@@ -31,9 +29,8 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt \
  && pip install --no-deps blackboxprotobuf==1.0.1
 
-# Optional fused Mamba kernels (needs this -devel base for nvcc). Uncomment to
-# bake them in; adds a few minutes to the build.
+# Optional fused Mamba kernels (needs this -devel base for nvcc):
 # RUN pip install "causal-conv1d>=1.4.0" "mamba-ssm>=2.2.2"
 
 WORKDIR /workspace
-CMD ["bash"]
+CMD ["sleep", "infinity"]

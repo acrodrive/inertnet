@@ -51,21 +51,36 @@ pip install -e .
 PYTHONPATH=src python tests/test_pipeline.py
 ```
 
-Train on RunPod / RTX 4090. The Docker image bakes **deps only**; code, data and
-outputs live on the network volume (mounted at `/workspace`), so the image is
-built once and the model is updated with `git pull`:
+Train on RunPod / RTX 4090. Code, data and outputs all live on the network
+volume (mounted at `/workspace`); the model is updated with `git pull`, never an
+image rebuild.
+
+Simplest path — a **stock RunPod PyTorch template** (SSH ready out of the box):
 
 ```
-# build & push the deps image once
-docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
-
-# on a fresh pod (network volume at /workspace), bootstrap once:
-cd /workspace && git clone https://github.com/acrodrive/inertnet.git \
-  && bash inertnet/scripts/pod_setup.sh          # later: just re-run pod_setup.sh
+# on a fresh pod, network volume at /workspace:
+cd /workspace && git clone https://github.com/acrodrive/inertnet.git
+bash inertnet/scripts/pod_setup.sh     # clone/pull, pip install, link package
 wandb login
 #   data -> /workspace/inertnet/dataset/Waymo/training/training.tfrecord-*
 python -m mambahybrid.train --config configs/default.yaml
 ```
+
+`pod_setup.sh` points the pip cache at `/workspace/.pip-cache`, so the install is
+only slow on the very first pod.
+
+Faster pod cold-starts — build the deps image once (`Dockerfile`, deps only);
+`pod_setup.sh` still does the git clone + package link on the pod:
+
+```
+docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
+```
+
+SSH: add your **public key** in RunPod → Settings → SSH Public Keys. The web
+terminal and proxy SSH (`ssh.runpod.io`) need no exposed port; **VS Code
+Remote-SSH, `scp`, `rsync` and `ssh -L` tunnels need direct SSH** — set **Expose
+TCP Ports: 22** on the pod (Secure Cloud, which has a public IP). The Connect
+dialog then shows `ssh root@<ip> -p <port> -i ~/.ssh/id_ed25519`.
 
 Monitoring: set `wandb: true` in the config (already on in `configs/*.yaml`).
 Runs log to project `inertnet`; the wandb run id is derived from `ckpt_dir`, so
