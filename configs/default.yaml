@@ -1,0 +1,56 @@
+# MambaHybrid — default training config (RTX 4090, ~100-200 shard subset).
+# See src/mambahybrid/config.py for every field + default.
+
+# ---- data ----
+train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
+val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
+cache_dir: "cache"
+n_slots: 300
+fov_radius: 100.0
+max_map_tokens: 256
+poly_points: 20
+pos_scale: 50.0
+vel_scale: 10.0
+size_scale: 10.0
+occlusion_prob: 0.5          # synthetic occlusion per eligible track (spec 3.3.2)
+occlusion_max_gaps: 2
+random_rotate: true
+subtract_ego_velocity: false
+
+# ---- model ----
+encoder: "mamba"             # "mamba" | "gru" | "attn"  (ablation, spec 3.4.2)
+d_model: 128
+mamba_layers: 4
+mamba_d_state: 16
+mamba_d_conv: 4
+mamba_expand: 2
+decoder_layers: 2
+n_heads: 4
+n_modes: 6                   # K
+horizon: 50                  # future steps per prediction (5.0 s @ 10 Hz)
+warmup_steps: 10             # no loss / no prediction before this step
+min_future_steps: 10
+grad_checkpoint: true
+
+# ---- loss weights (spec 3.2.6) ----
+lambda_aux: 0.5
+lambda_next: 0.5
+lambda_recon_ft: 1.0
+lambda_recon_fupd: 1.0
+lambda_traj: 1.0
+lambda_mode: 0.5
+
+# ---- optim ----
+batch_size: 4
+lr: 3.0e-4
+weight_decay: 0.01
+grad_clip: 1.0
+max_steps: 120000
+warmup_iters: 2000
+log_every: 50
+val_every: 2000
+ckpt_dir: "runs/exp1"
+num_workers: 6
+seed: 0
+amp: true
+device: "cuda"

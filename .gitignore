@@ -1,0 +1,10 @@
+__pycache__/
+*.pyc
+.DS_Store
+cache/
+runs/
+*.pt
+*.npz
+dataset/
+!dataset/.gitkeep
+.venv/

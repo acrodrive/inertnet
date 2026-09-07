@@ -1,0 +1,24 @@
+# Baseline B (spec 3.4.2): Transformer-only. Same everything, Mamba -> causal
+# self-attention over past inputs. This is the model the thesis argues against.
+train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
+val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
+cache_dir: "cache"
+n_slots: 300
+max_map_tokens: 256
+
+encoder: "attn"
+d_model: 128
+mamba_layers: 4          # reused as encoder depth
+decoder_layers: 2
+n_heads: 4
+n_modes: 6
+horizon: 50
+warmup_steps: 10
+min_future_steps: 10
+grad_checkpoint: false   # attn keeps full O(T^2) graph; checkpoint conflicts
+
+batch_size: 2
+lr: 3.0e-4
+max_steps: 120000
+ckpt_dir: "runs/ablation_attn"
+device: "cuda"

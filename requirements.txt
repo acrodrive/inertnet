@@ -1,0 +1,14 @@
+# Core (CPU or CUDA). On RunPod/4090 install the CUDA build of torch first:
+#   pip install torch --index-url https://download.pytorch.org/whl/cu124
+torch>=2.4
+numpy>=1.26
+pyyaml>=6.0
+tqdm>=4.66
+einops>=0.7
+
+# WOMD parsing (no TensorFlow dependency)
+blackboxprotobuf>=1.0.1
+
+# Optional: fused Mamba kernels. The model runs without these (pure-torch
+# MambaBlock), but they are ~10x faster for the recurrence on GPU.
+#   pip install mamba-ssm causal-conv1d
