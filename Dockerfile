@@ -24,9 +24,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         git build-essential ninja-build && \
     rm -rf /var/lib/apt/lists/*
 
-# Deps only — no application code is copied in.
+# Deps only — no application code is copied in. blackboxprotobuf is installed
+# --no-deps because its metadata pins protobuf==3.10.0 (it only uses the stable
+# google.protobuf.internal wire codecs, which work on modern protobuf).
 COPY requirements.txt /tmp/requirements.txt
-RUN pip install -r /tmp/requirements.txt
+RUN pip install -r /tmp/requirements.txt \
+ && pip install --no-deps blackboxprotobuf==1.0.1
 
 # Optional fused Mamba kernels (needs this -devel base for nvcc). Uncomment to
 # bake them in; adds a few minutes to the build.

@@ -1,20 +1,28 @@
-# ── Core runtime (CPU or CUDA) ──────────────────────────────────────────────
-# The RunPod PyTorch base image already ships the CUDA build of torch.
-# Locally:  pip install torch --index-url https://download.pytorch.org/whl/cpu
+# Full training environment (RunPod / RTX 4090). The PyTorch base image already
+# ships torch+CUDA; this file adds the rest. Install order matters — see the
+# Dockerfile: blackboxprotobuf must go in with --no-deps (next section).
+#
+#   pip install -r requirements.txt
+#   pip install --no-deps blackboxprotobuf==1.0.1
+
 torch>=2.4
 numpy>=1.26
 pyyaml>=6.0
 einops>=0.7
 tqdm>=4.66
 
-# WOMD Scenario protobuf parsing — no TensorFlow / waymo-open-dataset needed.
-blackboxprotobuf>=1.0.1
+# blackboxprotobuf 1.0.1 over-pins `protobuf==3.10.0` in its metadata but only
+# touches the stable google.protobuf.internal wire codecs, so we install it
+# --no-deps and satisfy protobuf here with a version wandb also accepts.
+protobuf>=5,<6
 
-# Experiment tracking. train.py imports it lazily, so it is only needed when
-# `wandb: true` in the config. Run `wandb login` once per pod.
-wandb>=0.16
+# Experiment tracking. train.py imports it lazily (only needed when
+# `wandb: true` in the config). Run `wandb login` once per pod.
+wandb>=0.18
+
+# ── Installed separately with --no-deps (see above) ─────────────────────────
+#   blackboxprotobuf==1.0.1     WOMD Scenario protobuf parsing, no TensorFlow
 
 # ── Optional: fused Mamba CUDA kernels ──────────────────────────────────────
 # ~10x faster recurrence on GPU; the pure-torch MambaBlock works without them.
-# Needs the -devel base image (nvcc) to build.
-#   pip install mamba-ssm causal-conv1d
+#   pip install "mamba-ssm>=2.2.2" "causal-conv1d>=1.4.0"

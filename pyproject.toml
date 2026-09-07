@@ -16,8 +16,10 @@ dependencies = [
     "blackboxprotobuf>=1.0.1",
 ]
 
-[project.optional-dependencies]
-track = ["wandb>=0.16"]
+# wandb is intentionally NOT a dependency here: blackboxprotobuf's metadata
+# pins protobuf==3.10.0, which collides with wandb's protobuf>=5. On the GPU
+# box use requirements.txt (which installs blackboxprotobuf --no-deps); for
+# local CPU work you don't need wandb (`wandb: false` in the config).
 
 [tool.setuptools.packages.find]
 where = ["src"]

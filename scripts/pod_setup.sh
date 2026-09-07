@@ -26,11 +26,12 @@ else
 fi
 cd "$DIR"
 
-# Package is linked in editable mode; deps are already in the image, so skip
-# them. Add wandb explicitly in case the image predates it.
+# Package is linked in editable mode; deps are already in the deps image, so
+# skip them here. Fall back to installing them if this is a bare base image.
 echo "==> pip install -e . (no deps)"
 pip install --no-deps -e .
-python -c "import wandb" 2>/dev/null || pip install "wandb>=0.16"
+python -c "import wandb, einops" 2>/dev/null || pip install -r requirements.txt
+python -c "import blackboxprotobuf" 2>/dev/null || pip install --no-deps blackboxprotobuf==1.0.1
 
 echo "==> sanity check"
 python - <<'PY'
