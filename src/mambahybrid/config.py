@@ -63,6 +63,9 @@ class Config:
     seed: int = 0
     amp: bool = True
     device: str = "cuda"
+    compile: bool = True       # torch.compile the per-step fn (~2.3x: the 91-step
+                               # Python loop is otherwise kernel-launch bound).
+                               # Forces off amp (fp32) - amp helps nothing here.
 
     # ---- logging ----
     wandb: bool = False

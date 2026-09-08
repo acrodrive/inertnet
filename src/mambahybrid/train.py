@@ -95,7 +95,12 @@ def main():
     model = MambaHybrid(cfg).to(device)
     opt = torch.optim.AdamW(model.parameters(), lr=cfg.lr, weight_decay=cfg.weight_decay)
     sched = torch.optim.lr_scheduler.LambdaLR(opt, lambda s: lr_lambda(s, cfg))
-    scaler = torch.amp.GradScaler("cuda", enabled=cfg.amp and device == "cuda")
+    # AMP measurably does nothing here (the step loop is CUDA-launch bound, not
+    # flop bound) and collides with the fp32-forced selective scan under compile.
+    use_amp = cfg.amp and device == "cuda" and not cfg.compile
+    if cfg.amp and cfg.compile:
+        print("note: amp disabled (compile is on; amp gives no speedup for this model)")
+    scaler = torch.amp.GradScaler("cuda", enabled=use_amp)
     n_params = sum(p.numel() for p in model.parameters())
     print(f"model params: {n_params/1e6:.2f} M")
     if run is not None:
@@ -121,7 +126,7 @@ def main():
             batch = next(data_iter)
         batch = move(batch, device)
 
-        with torch.amp.autocast("cuda", enabled=cfg.amp and device == "cuda"):
+        with torch.amp.autocast("cuda", enabled=use_amp):
             out = model(batch)
             losses = compute_losses(out, batch, cfg)
         opt.zero_grad(set_to_none=True)

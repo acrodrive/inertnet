@@ -41,6 +41,22 @@ class MambaHybrid(nn.Module):
         # is incompatible with per-step checkpointing.
         self.grad_checkpoint = cfg.grad_checkpoint and cfg.encoder != "attn"
 
+        # The forward is a Python loop over T (~91) steps, each firing hundreds of
+        # tiny CUDA kernels -> launch-bound. torch.compile fuses each step's ops
+        # (identical shapes every iteration). We compile _step through a plain
+        # wrapper rather than compiling it directly: dynamo must be the *outer*
+        # layer over torch.utils.checkpoint, not the other way around. Skip for
+        # "attn": its state grows each step so it would recompile every t.
+        self._compiled_step = None
+        if getattr(cfg, "compile", False) and cfg.encoder != "attn":
+            self._compiled_step = torch.compile(self._run_step, dynamic=False)
+
+    def _run_step(self, checkpointing: bool, *args):
+        if checkpointing:
+            return checkpoint(self._step, *args, use_reentrant=False,
+                              preserve_rng_state=False)
+        return self._step(*args)
+
     # ------------------------------------------------------------------ step --
     def _step(self, x_raw_t, f_prev, valid_t, static_map, signal_t,
               slot_mask, map_mask, *mamba_state):
@@ -88,8 +104,12 @@ class MambaHybrid(nn.Module):
 
             args = (x_raw_t, f_prev, valid_t, static_map,
                     batch["signal_state"][:, t], slot_mask, map_mask, *mamba_state)
-            if self.grad_checkpoint and self.training:
-                ret = checkpoint(self._step, *args, use_reentrant=False)
+            ckpt = self.grad_checkpoint and self.training
+            if self._compiled_step is not None:
+                ret = self._compiled_step(ckpt, *args)
+            elif ckpt:
+                ret = checkpoint(self._step, *args, use_reentrant=False,
+                                 preserve_rng_state=False)
             else:
                 ret = self._step(*args)
             y_t, f_t, f_upd_t = ret[0], ret[1], ret[2]

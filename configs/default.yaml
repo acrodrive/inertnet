@@ -59,7 +59,9 @@ val_every: 2000
 ckpt_dir: "runs/exp1"
 num_workers: 6
 seed: 0
-amp: true
+amp: true                   # ignored while compile is on (fp32); see config.py
+compile: true               # ~2.3x on the step loop. first iteration pays a
+                            # ~1-2 min compile; set false to debug eager
 device: "cuda"
 
 # ---- logging ----
