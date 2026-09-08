@@ -65,5 +65,5 @@ compile: true               # ~2.3x on the step loop. first iteration pays a
 device: "cuda"
 
 # ---- logging ----
-wandb: true                 # needs `pip install wandb` + `wandb login` on the pod
+wandb: false                 # needs `pip install wandb` + `wandb login` on the pod
 wandb_project: "inertnet"
