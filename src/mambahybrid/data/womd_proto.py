@@ -117,6 +117,83 @@ WOMD_HZ = 10
 WOMD_DT = 0.1
 
 
+# ------------------------------------------------------------- typedef ---------
+# blackboxprotobuf, given no typedef, infers every LEN field's type by trial
+# decode (``decode_guess``). Packed ``int64``/``double`` blobs (lane connectivity
+# lists, polylines) frequently look like valid sub-messages, and the recursive
+# guess backtracks catastrophically -- some scenarios take minutes to hours.
+#
+# So we hand blackboxprotobuf an explicit typedef built from the field map above.
+# Every field that actually appears in WOMD is pinned to a concrete type:
+#   - numeric scalars -> fixed32 / fixed64 / int   (as_f32 / as_f64 handle bits)
+#   - sub-messages the parser reads -> "message" + nested typedef
+#   - sub-messages / packed lists the parser ignores -> "bytes" (no recursion)
+# Anything left unpinned is a field we've never seen; blackboxprotobuf falls
+# back to guessing for it alone, which is fine for scalars.
+
+_F64 = {"type": "fixed64"}
+_F32 = {"type": "fixed32"}
+_INT = {"type": "int"}
+_BYTES = {"type": "bytes"}
+
+
+def _msg(typedef: dict) -> dict:
+    return {"type": "message", "message_typedef": typedef}
+
+
+_MAP_POINT = {MP_X: _F64, MP_Y: _F64, MP_Z: _F64}
+
+_OBJECT_STATE = {
+    OS_CENTER_X: _F64, OS_CENTER_Y: _F64, OS_CENTER_Z: _F64,
+    OS_LENGTH: _F32, OS_WIDTH: _F32, OS_HEIGHT: _F32, OS_HEADING: _F32,
+    OS_VELOCITY_X: _F32, OS_VELOCITY_Y: _F32, OS_VALID: _INT,
+}
+
+_TRACK = {TR_ID: _INT, TR_OBJECT_TYPE: _INT, TR_STATES: _msg(_OBJECT_STATE)}
+
+_REQUIRED_PREDICTION = {RP_TRACK_INDEX: _INT, RP_DIFFICULTY: _INT}
+
+_TS_LANE_STATE = {TS_LANE: _INT, TS_STATE: _INT, TS_STOP_POINT: _msg(_MAP_POINT)}
+_DYNAMIC_MAP_STATE = {DMS_LANE_STATES: _msg(_TS_LANE_STATE)}
+
+# LaneCenter: parser only reads type (2) and polyline (8). speed_limit (1) and
+# interpolating (3) are scalars; entry/exit lanes (9, 10) are packed int64 and
+# boundary/neighbor sub-messages (6, 7, 11-14) are ignored -> keep as bytes.
+_LANE_CENTER = {
+    LC_SPEED_LIMIT_MPH: _F64, LC_TYPE: _INT, LC_INTERPOLATING: _INT,
+    LC_POLYLINE: _msg(_MAP_POINT),
+    LC_ENTRY_LANES: _BYTES, LC_EXIT_LANES: _BYTES,
+    "6": _BYTES, "7": _BYTES, "11": _BYTES, "12": _BYTES, "13": _BYTES, "14": _BYTES,
+}
+
+_ROAD_LINE = {RL_TYPE: _INT, RL_POLYLINE: _msg(_MAP_POINT)}   # RoadEdge shares this
+_POLYGON = {POLY_POLYGON: _msg(_MAP_POINT)}                    # crosswalk/speed_bump/driveway
+_STOP_SIGN = {SS_LANE: _INT, SS_POSITION: _msg(_MAP_POINT)}
+
+_MAP_FEATURE = {
+    MF_ID: _INT,
+    MF_LANE: _msg(_LANE_CENTER),
+    MF_ROAD_LINE: _msg(_ROAD_LINE),
+    MF_ROAD_EDGE: _msg(_ROAD_LINE),
+    MF_STOP_SIGN: _msg(_STOP_SIGN),
+    MF_CROSSWALK: _msg(_POLYGON),
+    MF_SPEED_BUMP: _msg(_POLYGON),
+    MF_DRIVEWAY: _msg(_POLYGON),
+}
+
+SCENARIO_TYPEDEF = {
+    SC_TIMESTAMPS: _F64,               # repeated double, unpacked
+    SC_TRACKS: _msg(_TRACK),
+    SC_OBJECTS_OF_INTEREST: _INT,      # repeated int32, unpacked
+    SC_SCENARIO_ID: _BYTES,            # string (decoded downstream)
+    SC_SDC_TRACK_INDEX: _INT,
+    SC_DYNAMIC_MAP_STATES: _msg(_DYNAMIC_MAP_STATE),
+    SC_MAP_FEATURES: _msg(_MAP_FEATURE),
+    SC_CURRENT_TIME_INDEX: _INT,
+    SC_TRACKS_TO_PREDICT: _msg(_REQUIRED_PREDICTION),
+}
+
+
 # ---------------------------------------------------------------- decoders -----
 def as_f64(bits) -> float:
     """fixed64 int bit-pattern -> double."""

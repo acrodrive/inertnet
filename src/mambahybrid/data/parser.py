@@ -150,7 +150,7 @@ def _decode_signals(dms_raw: list, T: int):
 
 
 def parse_scenario(payload: bytes) -> Scenario:
-    msg, _ = blackboxprotobuf.decode_message(payload)
+    msg, _ = blackboxprotobuf.decode_message(payload, P.SCENARIO_TYPEDEF)
 
     ts = np.asarray([P.as_f64(x) for x in P.as_list(msg.get(P.SC_TIMESTAMPS))], np.float64)
     T = len(ts)
