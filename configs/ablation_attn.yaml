@@ -1,7 +1,7 @@
 # Baseline B (spec 3.4.2): Transformer-only. Same everything, Mamba -> causal
 # self-attention over past inputs. This is the model the thesis argues against.
-train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
-val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
+train_shards: "/workspace/datasets/waymo/motion/training/training.tfrecord-000[0-8]*-of-01000"
+val_shards:   "/workspace/datasets/waymo/motion/validation/validation.tfrecord-*-of-00150"
 cache_dir: null             # see configs/default.yaml
 n_slots: 300
 max_map_tokens: 256

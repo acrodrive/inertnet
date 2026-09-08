@@ -1,6 +1,10 @@
 """Quick stats over WOMD shard(s): occlusion rates, gap lengths, signal states.
 
-    python scripts/inspect_shard.py "dataset/Waymo/training/training.tfrecord-0000*-of-01000"
+    python scripts/inspect_shard.py "<glob>" [max_scenarios]
+
+    # ~50 scenarios is plenty for a sanity check; each proto parse is ~seconds
+    python scripts/inspect_shard.py \
+        "/workspace/datasets/waymo/motion/training/training.tfrecord-0000*-of-01000" 50
 """
 import collections
 import glob
@@ -12,9 +16,12 @@ sys.path.insert(0, "src")
 from mambahybrid.data.parser import iter_scenarios  # noqa: E402
 
 
-def main(pattern: str, max_scenarios: int = 200):
+def main(pattern: str, max_scenarios: int = 50):
     files = sorted(glob.glob(pattern))
     print(f"{len(files)} shard(s)")
+    if not files:
+        print(f"no files match {pattern!r} -- check the path/glob")
+        return
     n_sc = n_tr = n_any_inv = n_gap = n_ttp = n_ttp_gap = 0
     gap_lens = []
     state_hist = collections.Counter()
@@ -51,6 +58,9 @@ def main(pattern: str, max_scenarios: int = 200):
             break
 
     print(f"scenarios: {n_sc}   tracks: {n_tr}")
+    if n_tr == 0:
+        print("no valid tracks parsed -- nothing to summarise")
+        return
     print(f"tracks with any invalid step : {n_any_inv} ({100*n_any_inv/n_tr:.1f}%)")
     print(f"tracks with interior gap     : {n_gap} ({100*n_gap/n_tr:.1f}%)")
     if gap_lens:
@@ -61,5 +71,6 @@ def main(pattern: str, max_scenarios: int = 200):
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else
-         "dataset/Waymo/training/training.tfrecord-00000-of-01000")
+    pat = sys.argv[1] if len(sys.argv) > 1 else \
+        "/workspace/datasets/waymo/motion/training/training.tfrecord-00000-of-01000"
+    main(pat, int(sys.argv[2]) if len(sys.argv) > 2 else 50)

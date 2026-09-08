@@ -2,12 +2,16 @@
 # See src/mambahybrid/config.py for every field + default.
 
 # ---- data ----
-train_shards: "dataset/Waymo/training/training.tfrecord-00[0-8]*-of-01000"
-val_shards:   "dataset/Waymo/training/training.tfrecord-009[0-8]*-of-01000"
-cache_dir: null             # per-scenario .npz cache. null = off (workers re-parse
-                            # protos each epoch — cheap at this model speed, and the
-                            # cache would be ~250 GB for a 100-shard subset). Set to a
-                            # path under /workspace only if data loading is CPU-bound.
+# On disk under datasets/waymo/motion/: training/ (90 shards, 00000-00089),
+# validation/ (10 shards, full 91-step + future GT), testing/ (11-step, no future).
+train_shards: "/workspace/datasets/waymo/motion/training/training.tfrecord-000[0-8]*-of-01000"
+val_shards:   "/workspace/datasets/waymo/motion/validation/validation.tfrecord-*-of-00150"
+cache_dir: null             # per-scenario preprocessed-sample .npz cache. null = off
+                            # (workers re-parse protos every epoch). The full cache is
+                            # ~2.5 GB/shard (~225 GB for 90 shards) — far over the
+                            # ~30 GB free here, so leave it off, or point it at a
+                            # small val-only run. The tiny .offidx.json seek indexes
+                            # next to each shard are written regardless and are fine.
 n_slots: 300
 fov_radius: 100.0
 max_map_tokens: 256

@@ -12,7 +12,10 @@ from mambahybrid.losses import compute_losses
 from mambahybrid.metrics import occlusion_reconstruction_error, trajectory_metrics
 from mambahybrid.model import MambaHybrid
 
-SHARD = "dataset/Waymo/training/training.tfrecord-00000-of-01000"
+SHARD = os.environ.get(
+    "WOMD_TEST_SHARD",
+    "/workspace/datasets/waymo/motion/training/training.tfrecord-00000-of-01000",
+)
 
 
 def tiny_cfg() -> Config:

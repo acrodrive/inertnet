@@ -9,7 +9,10 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "src"))
 from mambahybrid.data import womd_proto as P
 from mambahybrid.data.parser import parse_scenario
 
-SHARD = "dataset/Waymo/training/training.tfrecord-00000-of-01000"
+SHARD = os.environ.get(
+    "WOMD_TEST_SHARD",
+    "/workspace/datasets/waymo/motion/training/training.tfrecord-00000-of-01000",
+)
 
 
 def test_offsets_match_stream():

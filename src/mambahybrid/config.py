@@ -11,9 +11,9 @@ from .data.preprocess import PreprocessConfig
 @dataclasses.dataclass
 class Config:
     # ---- data / preprocess ----
-    train_shards: str = "dataset/Waymo/training/training.tfrecord-000*-of-01000"
-    val_shards: str = "dataset/Waymo/training/training.tfrecord-0009*-of-01000"
-    cache_dir: str | None = "cache"
+    train_shards: str = "/workspace/datasets/waymo/motion/training/training.tfrecord-000[0-8]*-of-01000"
+    val_shards: str = "/workspace/datasets/waymo/motion/validation/validation.tfrecord-*-of-00150"
+    cache_dir: str | None = None
     n_slots: int = 300
     fov_radius: float = 100.0
     max_map_tokens: int = 256
