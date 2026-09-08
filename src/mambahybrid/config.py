@@ -63,9 +63,11 @@ class Config:
     seed: int = 0
     amp: bool = True
     device: str = "cuda"
-    compile: bool = True       # torch.compile the per-step fn (~2.3x: the 91-step
-                               # Python loop is otherwise kernel-launch bound).
-                               # Forces off amp (fp32) - amp helps nothing here.
+    compile: bool = False      # torch.compile _run_step is ~2.3x (the 91-step loop
+                               # is kernel-launch bound) BUT leaks ~0.9 MB/step of
+                               # live CUDA memory on torch 2.4.1 (inductor bug, not
+                               # reclaimable) -> OOMs a long run. Leave off until a
+                               # torch upgrade. When on, train.py forces amp off.
 
     # ---- logging ----
     wandb: bool = False

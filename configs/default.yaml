@@ -48,22 +48,24 @@ lambda_traj: 1.0
 lambda_mode: 0.5
 
 # ---- optim ----
-batch_size: 6               # ~17 GB / 24. bigger is ~free (step loop is
-                            # launch-bound) but batch 8 hits 23 GB and 10 OOMs
+batch_size: 6               # eager ~17.4 GB / 24, no leak. batch 8 = 23.5 GB
+                            # (too tight for a long run), 10 OOMs
 lr: 3.0e-4                  # tuned at batch 4; consider ~3.7e-4 for batch 6
 weight_decay: 0.01
 grad_clip: 1.0
-max_steps: 45000            # ~6 epochs over the 90-shard subset (~7500 steps/epoch
-                            # at batch 6), ~18 h at ~0.68 it/s
+max_steps: 22000            # ~3 epochs over the 90-shard subset (~7400 steps/epoch
+                            # at batch 6), ~21 h at ~0.30 it/s eager. --resume
+                            # runs/exp1/last.pt to continue if val still improving
 warmup_iters: 1000
 log_every: 50
-val_every: 2000
+val_every: 1500
 ckpt_dir: "runs/exp1"
 num_workers: 6
 seed: 0
-amp: true                   # ignored while compile is on (fp32); see config.py
-compile: true               # ~2.3x on the step loop. first iteration pays a
-                            # ~1-2 min compile; set false to debug eager
+amp: false                  # measurably no speedup here (launch-bound) and the
+                            # selective scan is fp32-only anyway
+compile: false              # ~2.3x but leaks CUDA memory on torch 2.4.1 -> OOM.
+                            # see src/mambahybrid/config.py
 device: "cuda"
 
 # ---- logging ----
