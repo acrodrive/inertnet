@@ -63,6 +63,7 @@ def main():
 
     cfg = Config.load(args.config) if os.path.exists(args.config) else Config()
     torch.manual_seed(cfg.seed)
+    torch.set_float32_matmul_precision("high")   # TF32 matmuls; we train in fp32
     device = cfg.device if torch.cuda.is_available() or cfg.device == "cpu" else "cpu"
     os.makedirs(cfg.ckpt_dir, exist_ok=True)
     cfg.dump(os.path.join(cfg.ckpt_dir, "config.yaml"))

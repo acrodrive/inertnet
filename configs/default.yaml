@@ -48,12 +48,14 @@ lambda_traj: 1.0
 lambda_mode: 0.5
 
 # ---- optim ----
-batch_size: 4
-lr: 3.0e-4
+batch_size: 6               # ~17 GB / 24. bigger is ~free (step loop is
+                            # launch-bound) but batch 8 hits 23 GB and 10 OOMs
+lr: 3.0e-4                  # tuned at batch 4; consider ~3.7e-4 for batch 6
 weight_decay: 0.01
 grad_clip: 1.0
-max_steps: 120000
-warmup_iters: 2000
+max_steps: 45000            # ~6 epochs over the 90-shard subset (~7500 steps/epoch
+                            # at batch 6), ~18 h at ~0.68 it/s
+warmup_iters: 1000
 log_every: 50
 val_every: 2000
 ckpt_dir: "runs/exp1"
