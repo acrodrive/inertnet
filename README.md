@@ -69,8 +69,9 @@ python -m mambahybrid.train --config configs/default.yaml
 `pod_setup.sh` points the pip cache at `/workspace/.pip-cache`, so the install is
 only slow on the very first pod.
 
-Faster pod cold-starts — build the deps image once (`Dockerfile`, deps only);
-`pod_setup.sh` still does the git clone + package link on the pod:
+Faster pod cold-starts — build the deps image once (`Dockerfile` bakes deps +
+`scripts/start.sh`, which starts sshd and keeps the pod alive); `pod_setup.sh`
+still does the git clone + package link on the pod:
 
 ```
 docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps

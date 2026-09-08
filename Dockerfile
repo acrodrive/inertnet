@@ -6,9 +6,9 @@
 #
 # Build this only if you want faster pod cold-starts. It bakes deps ONLY — code,
 # data and outputs live on the network volume (mounted at /workspace), updated
-# with `git pull`, never an image rebuild. If you run it directly as a RunPod
-# pod you must add RunPod's SSH setup yourself (openssh-server + a start script
-# that injects $PUBLIC_KEY and keeps the container alive).
+# with `git pull`, never an image rebuild. scripts/start.sh is the entrypoint:
+# it injects RunPod's $PUBLIC_KEY, starts sshd (for VS Code Remote-SSH etc.),
+# and keeps the container alive.
 #
 #   docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
 
@@ -19,7 +19,7 @@ ENV DEBIAN_FRONTEND=noninteractive \
     PIP_NO_CACHE_DIR=1
 
 RUN apt-get update && apt-get install -y --no-install-recommends \
-        git build-essential ninja-build && \
+        git build-essential ninja-build openssh-server tmux && \
     rm -rf /var/lib/apt/lists/*
 
 # Deps only — no application code is copied in. blackboxprotobuf is installed
@@ -32,5 +32,8 @@ RUN pip install -r /tmp/requirements.txt \
 # Optional fused Mamba kernels (needs this -devel base for nvcc):
 # RUN pip install "causal-conv1d>=1.4.0" "mamba-ssm>=2.2.2"
 
+COPY scripts/start.sh /start.sh
+RUN chmod +x /start.sh
+
 WORKDIR /workspace
-CMD ["sleep", "infinity"]
+CMD ["/start.sh"]
