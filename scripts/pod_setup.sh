@@ -19,6 +19,18 @@ DIR="$WORK/inertnet"
 
 export PIP_CACHE_DIR="$WORK/.pip-cache"
 
+# Find a Python. PyTorch images keep it in /opt/conda; some stock templates use
+# a venv that a non-login shell hasn't activated. Never rely on bare `pip`.
+if ! command -v python >/dev/null 2>&1; then
+    for d in /opt/conda/bin /venv/bin /workspace/venv/bin; do
+        [ -x "$d/python" ] && export PATH="$d:$PATH" && break
+    done
+fi
+PY="$(command -v python || command -v python3 || true)"
+[ -n "$PY" ] || { echo "no python on PATH — run: which -a python3; ls /opt/conda/bin" >&2; exit 1; }
+PIP="$PY -m pip"
+echo "python: $PY"
+
 cd "$WORK"
 if [ -d "$DIR/.git" ]; then
     echo "==> git pull"
@@ -30,12 +42,12 @@ fi
 cd "$DIR"
 
 echo "==> deps"
-python -c "import einops, wandb" 2>/dev/null || pip install -r requirements.txt
-python -c "import blackboxprotobuf"  2>/dev/null || pip install --no-deps blackboxprotobuf==1.0.1
-pip install --no-deps -e .          # link the mambahybrid package
+"$PY" -c "import einops, wandb" 2>/dev/null || $PIP install -r requirements.txt
+"$PY" -c "import blackboxprotobuf" 2>/dev/null || $PIP install --no-deps blackboxprotobuf==1.0.1
+$PIP install --no-deps -e .          # link the mambahybrid package
 
 echo "==> sanity check"
-python - <<'PY'
+"$PY" - <<'PY'
 import torch, blackboxprotobuf, wandb
 print("torch", torch.__version__, "| cuda", torch.cuda.is_available(),
       "|", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no gpu")
