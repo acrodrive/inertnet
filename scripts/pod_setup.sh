@@ -53,10 +53,20 @@ print("torch", torch.__version__, "| cuda", torch.cuda.is_available(),
       "|", torch.cuda.get_device_name(0) if torch.cuda.is_available() else "no gpu")
 PY
 
-cat <<'EOF'
+# Put the interpreter's bin dir on PATH for future shells in this pod (the
+# pip/wandb/python console scripts live there; ~/.bashrc is ephemeral, so this
+# re-runs per pod).
+BINDIR="$(cd "$(dirname "$PY")" && pwd)"
+grep -qF "$BINDIR" ~/.bashrc 2>/dev/null || echo "export PATH=\"$BINDIR:\$PATH\"" >> ~/.bashrc
+
+cat <<EOF
+
+done. for THIS shell run:  export PATH="$BINDIR:\$PATH"
+     (new shells pick it up from ~/.bashrc automatically)
 
 next:
-  wandb login                        # or: export WANDB_API_KEY=...
+  export WANDB_API_KEY=...            # from wandb.ai/authorize  (or: wandb login)
   # data -> /workspace/inertnet/dataset/Waymo/training/training.tfrecord-*
+  tmux new -s train
   python -m mambahybrid.train --config configs/default.yaml
 EOF
