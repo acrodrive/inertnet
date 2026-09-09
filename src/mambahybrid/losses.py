@@ -21,6 +21,17 @@ def _masked(loss_elem: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
     return (loss_elem * mask).sum() / denom
 
 
+def _masked_last2(loss_elem: torch.Tensor, mask: torch.Tensor) -> torch.Tensor:
+    """Per-mode masked mean: reduce only the last two dims (steps, coords),
+    keeping the leading axes. loss_elem [...,K,N,2]; mask broadcasts to [...,1,N]."""
+    while mask.dim() < loss_elem.dim():
+        mask = mask.unsqueeze(-1)                             # -> [...,1,N,1]
+    mask = mask.to(loss_elem.dtype)
+    num = (loss_elem * mask).sum(dim=(-1, -2))
+    den = mask.sum(dim=(-1, -2)).clamp_min(1.0)
+    return num / den
+
+
 def _recon_term(box: dict, batch: dict) -> torch.Tensor:
     m = batch["recon_mask"]                                   # [B,S,T]
     gt_head = torch.stack(
@@ -54,7 +65,25 @@ def _gather_future(batch: dict, elig_idx: torch.Tensor, horizon: int):
     return fut_pos, fut_valid
 
 
-def compute_losses(out: dict, batch: dict, cfg) -> dict:
+def _ewta_m(step: int | None, cfg) -> int:
+    """Evolving-WTA schedule (Makansi et al. 2019): update the top-M modes, M
+    annealed K -> 1 over training. Early on every mode gets gradient so none go
+    dead (exp3: 4 of 6 modes were never selected and never trained); late in
+    training only the winner is refined, recovering hard WTA's sharpness."""
+    k = cfg.n_modes
+    if step is None:
+        return 1
+    p = step / max(1, cfg.max_steps)
+    if p < 0.2:
+        return k
+    if p < 0.4:
+        return max(2, k // 2)
+    if p < 0.6:
+        return 2
+    return 1
+
+
+def compute_losses(out: dict, batch: dict, cfg, step: int | None = None) -> dict:
     recon_m = batch["recon_mask"]
     gv = batch["gt_valid"]
 
@@ -90,15 +119,20 @@ def compute_losses(out: dict, batch: dict, cfg) -> dict:
     ade_k = (err * fv).sum(-1) / fv.sum(-1).clamp_min(1.0)           # [B,S,E,K]
     kstar = ade_k.argmin(dim=-1)                                     # [B,S,E]
 
-    winner = torch.gather(
-        traj, 3, kstar[:, :, :, None, None, None].expand(-1, -1, -1, 1, cfg.horizon, 2)
-    ).squeeze(3)                                                     # [B,S,E,N,2]
-    # beta 0.1: targets are pos_scale-normalised, so a 5 m error is ~0.1 here —
-    # the default beta=1.0 keeps that in the squared regime and starves the
-    # trajectory head of gradient once the recon terms saturate (exp1).
+    # EWTA: per-mode smooth_l1 (beta 0.1 — targets are pos_scale-normalised, so a
+    # 5 m error is ~0.1 here; the default beta=1.0 keeps that squared and starves
+    # the head once recon saturates, exp1), averaged over the top-M modes.
+    per_mode = _masked_last2(
+        F.smooth_l1_loss(
+            traj, fut_pos[:, :, :, None].expand_as(traj), reduction="none", beta=0.1
+        ),
+        (sel[:, :, :, None] & fut_valid)[:, :, :, None],             # [B,S,E,1,N]
+    )                                                                # [B,S,E,K]
+    m = _ewta_m(step, cfg)
+    topm = ade_k.topk(m, dim=-1, largest=False).indices             # [B,S,E,m]
     l_traj = _masked(
-        F.smooth_l1_loss(winner, fut_pos, reduction="none", beta=0.1),
-        sel[:, :, :, None] & fut_valid,
+        torch.gather(per_mode, 3, topm).mean(dim=-1),               # [B,S,E]
+        sel,
     )
     l_mode = _masked(
         F.cross_entropy(

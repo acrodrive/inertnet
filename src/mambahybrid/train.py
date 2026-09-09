@@ -129,7 +129,7 @@ def main():
 
         with torch.amp.autocast("cuda", enabled=use_amp):
             out = model(batch)
-            losses = compute_losses(out, batch, cfg)
+            losses = compute_losses(out, batch, cfg, step=step)
         opt.zero_grad(set_to_none=True)
         scaler.scale(losses["total"]).backward()
         scaler.unscale_(opt)
