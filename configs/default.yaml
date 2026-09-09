@@ -63,8 +63,10 @@ max_steps: 17000            # ~3 epochs over the 90-shard subset (~5500 steps/ep
 warmup_iters: 1000
 log_every: 50
 val_every: 1500
-ckpt_dir: "runs/exp4"       # exp3: agent-centric decoding. exp4: EWTA (losses.py)
-                            # revives dead modes (exp3 used only 2 of 6)
+ckpt_dir: "runs/exp5"       # exp4 (EWTA) done: minADE 1.87, effective modes 4.9/6.
+                            # exp5 = scale up (d_model 256, more layers, ~35k
+                            # steps, small lr sweep) — see HANDOFF.md. CHANGE the
+                            # scale params below before running.
 num_workers: 6
 seed: 0
 amp: false                  # measurably no speedup here (launch-bound) and the
