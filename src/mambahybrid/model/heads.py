@@ -45,7 +45,14 @@ class GTHead(nn.Module):
 
 
 class TrajectoryHead(nn.Module):
-    """One-shot multi-modal future decode from f_t_updated (K modes x N steps)."""
+    """One-shot multi-modal future decode from f_t_updated (K modes x N steps).
+
+    The offsets are regressed in the agent's own local frame (origin + x-axis =
+    the agent's pose at the decode step), then rotated back into the shared scene
+    frame so the loss and metrics — which live in scene space — are unchanged.
+    In the local frame "go straight" is the same target for every agent whatever
+    its heading, so a single head can share motion structure across all slots.
+    """
 
     def __init__(self, d_model: int, n_modes: int, horizon: int):
         super().__init__()
@@ -55,8 +62,16 @@ class TrajectoryHead(nn.Module):
         self.traj = nn.Linear(d_model, n_modes * horizon * 2)
         self.mode = nn.Linear(d_model, n_modes)
 
-    def forward(self, f_upd: torch.Tensor) -> dict:
+    def forward(self, f_upd: torch.Tensor, anchor_pos: torch.Tensor,
+                anchor_yaw: torch.Tensor) -> dict:
+        # anchor_pos [B,S,2], anchor_yaw [B,S] — the slot's pose (scene frame,
+        # pos_scale-normalised) at the step this trajectory is decoded from.
         h = self.trunk(f_upd)
         b, s, _ = h.shape
-        traj = self.traj(h).view(b, s, self.k, self.n, 2)
+        local = self.traj(h).view(b, s, self.k, self.n, 2)      # agent frame
+        cos, sin = torch.cos(anchor_yaw), torch.sin(anchor_yaw)  # [B,S]
+        cos, sin = cos[:, :, None, None], sin[:, :, None, None]
+        lx, ly = local[..., 0], local[..., 1]
+        traj = torch.stack([cos * lx - sin * ly, sin * lx + cos * ly], dim=-1)
+        traj = traj + anchor_pos[:, :, None, None, :]           # -> scene frame
         return {"traj": traj, "mode_logits": self.mode(h)}

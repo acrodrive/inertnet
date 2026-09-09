@@ -125,7 +125,12 @@ class MambaHybrid(nn.Module):
                 fupd_boxes[k].append(bfu[k])
 
             if lo <= t <= hi:
-                th = self.traj_head(f_upd_t)
+                # decode the future in each slot's local frame anchored at its
+                # step-t pose (pre-occlusion GT = the observed current state);
+                # the head rotates the result back into the scene frame.
+                th = self.traj_head(
+                    f_upd_t, batch["gt_pos"][:, :, t, :2], batch["gt_heading"][:, :, t]
+                )
                 traj_list.append(th["traj"])
                 mode_list.append(th["mode_logits"])
                 elig_idx.append(t)
