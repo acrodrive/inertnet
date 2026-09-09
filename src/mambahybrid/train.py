@@ -154,7 +154,7 @@ def main():
                             if k not in ("step", "lr", "it_s")}}, step=step)
             t0 = time.time()
 
-        if step % cfg.val_every == 0:
+        if step % cfg.val_every == 0 or step == cfg.max_steps:
             metrics = evaluate(model, val_loader, cfg, device)
             metrics["step"] = step
             print(f"  [val] " + "  ".join(f"{k}={v:.3f}" for k, v in metrics.items() if k != "step"))
