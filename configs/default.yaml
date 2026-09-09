@@ -1,4 +1,4 @@
-# MambaHybrid — default training config (RTX 4090, ~100-200 shard subset).
+# MambaHybrid — default training config (RTX 5090 32 GB, ~100-200 shard subset).
 # See src/mambahybrid/config.py for every field + default.
 
 # ---- data ----
@@ -48,13 +48,14 @@ lambda_traj: 1.0
 lambda_mode: 0.5
 
 # ---- optim ----
-batch_size: 6               # eager ~17.4 GB / 24, no leak. batch 8 = 23.5 GB
-                            # (too tight for a long run), 10 OOMs
-lr: 3.0e-4                  # tuned at batch 4; consider ~3.7e-4 for batch 6
+batch_size: 8               # compile + batch 8 = 22.1 GB peak / 32, no leak on
+                            # torch 2.8. batch 10 = 27.7 GB (tight), 12 OOMs.
+                            # see scripts/probe_compile.py for the sweep
+lr: 3.0e-4                  # tuned at batch 4; still fine at batch 8 (kept)
 weight_decay: 0.01
 grad_clip: 1.0
-max_steps: 22000            # ~3 epochs over the 90-shard subset (~7400 steps/epoch
-                            # at batch 6), ~21 h at ~0.30 it/s eager. --resume
+max_steps: 17000            # ~3 epochs over the 90-shard subset (~5500 steps/epoch
+                            # at batch 8), ~2.7 h at ~1.7 it/s (compile). --resume
                             # runs/exp1/last.pt to continue if val still improving
 warmup_iters: 1000
 log_every: 50
@@ -64,8 +65,9 @@ num_workers: 6
 seed: 0
 amp: false                  # measurably no speedup here (launch-bound) and the
                             # selective scan is fp32-only anyway
-compile: false              # ~2.3x but leaks CUDA memory on torch 2.4.1 -> OOM.
-                            # see src/mambahybrid/config.py
+compile: true               # ~2x over eager, no memory leak on torch 2.8 (the
+                            # 2.4.1 inductor leak is fixed). train.py forces amp
+                            # off when this is on. see scripts/probe_compile.py
 device: "cuda"
 
 # ---- logging ----

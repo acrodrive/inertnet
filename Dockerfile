@@ -3,8 +3,8 @@
 # RTX 5090 needs CUDA 12.8 + PyTorch >= 2.7 (first release with prebuilt sm_120
 # wheels). The old 2.4.1 / cuda12.4 base will NOT run on Blackwell at all
 # ("no kernel image is available for execution on the device"). torch 2.8 also
-# clears the 2.4.1 inductor bug that leaked CUDA memory under torch.compile, so
-# `compile: true` is worth re-testing on this base (retest before a long run).
+# clears the 2.4.1 inductor bug that leaked CUDA memory under torch.compile —
+# verified flat over 400 steps here, so `compile: true` is the default config.
 #
 # You usually DON'T need this: a stock RunPod "PyTorch" template already has
 # CUDA + sshd, and `scripts/pod_setup.sh` installs the rest onto the network

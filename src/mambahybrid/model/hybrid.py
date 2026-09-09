@@ -42,11 +42,11 @@ class MambaHybrid(nn.Module):
         self.grad_checkpoint = cfg.grad_checkpoint and cfg.encoder != "attn"
 
         # The forward is a Python loop over T (~91) steps, each firing hundreds of
-        # tiny CUDA kernels -> launch-bound. torch.compile fuses each step (~2.3x)
-        # but leaks live CUDA memory on torch 2.4.1 (see config.compile). Kept
-        # wired for a future torch: compile _run_step, so dynamo is the *outer*
-        # layer over torch.utils.checkpoint (the reverse fails to trace). Skip for
-        # "attn": its state grows each step so it would recompile every t.
+        # tiny CUDA kernels -> launch-bound. torch.compile fuses each step (~2x)
+        # with no memory leak on torch 2.8 (the 2.4.1 inductor leak is fixed; see
+        # config.compile). compile _run_step so dynamo is the *outer* layer over
+        # torch.utils.checkpoint (the reverse fails to trace). Skip for "attn":
+        # its state grows each step so it would recompile every t.
         self._compiled_step = None
         if getattr(cfg, "compile", False) and cfg.encoder != "attn":
             self._compiled_step = torch.compile(self._run_step, dynamic=False)

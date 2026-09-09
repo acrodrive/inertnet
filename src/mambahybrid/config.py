@@ -63,11 +63,12 @@ class Config:
     seed: int = 0
     amp: bool = True
     device: str = "cuda"
-    compile: bool = False      # torch.compile _run_step is ~2.3x (the 91-step loop
-                               # is kernel-launch bound) BUT leaks ~0.9 MB/step of
-                               # live CUDA memory on torch 2.4.1 (inductor bug, not
-                               # reclaimable) -> OOMs a long run. Leave off until a
-                               # torch upgrade. When on, train.py forces amp off.
+    compile: bool = False      # torch.compile _run_step is ~2x (the 91-step loop
+                               # is kernel-launch bound). torch 2.4.1's inductor
+                               # leaked ~0.9 MB/step of live CUDA memory here and
+                               # OOM'd long runs; torch 2.8 is clean (verified flat
+                               # over 400 steps, scripts/probe_compile.py). Default
+                               # config turns it on. When on, train.py forces amp off.
 
     # ---- logging ----
     wandb: bool = False
