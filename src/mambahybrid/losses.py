@@ -93,8 +93,11 @@ def compute_losses(out: dict, batch: dict, cfg) -> dict:
     winner = torch.gather(
         traj, 3, kstar[:, :, :, None, None, None].expand(-1, -1, -1, 1, cfg.horizon, 2)
     ).squeeze(3)                                                     # [B,S,E,N,2]
+    # beta 0.1: targets are pos_scale-normalised, so a 5 m error is ~0.1 here —
+    # the default beta=1.0 keeps that in the squared regime and starves the
+    # trajectory head of gradient once the recon terms saturate (exp1).
     l_traj = _masked(
-        F.smooth_l1_loss(winner, fut_pos, reduction="none"),
+        F.smooth_l1_loss(winner, fut_pos, reduction="none", beta=0.1),
         sel[:, :, :, None] & fut_valid,
     )
     l_mode = _masked(

@@ -40,20 +40,23 @@ min_future_steps: 10
 grad_checkpoint: true
 
 # ---- loss weights (spec 3.2.6) ----
+# exp1 (lambda_traj 1.0): recon/aux collapsed by step ~1000, traj plateaued at
+# ~5 m val minADE, then the run diverged at ~step 3300 (near-peak lr, vanished
+# aux gradients). exp2 gives the trajectory task real weight from the start.
 lambda_aux: 0.5
 lambda_next: 0.5
 lambda_recon_ft: 1.0
 lambda_recon_fupd: 1.0
-lambda_traj: 1.0
-lambda_mode: 0.5
+lambda_traj: 5.0             # 1.0 -> 5.0
+lambda_mode: 1.0             # 0.5 -> 1.0
 
 # ---- optim ----
 batch_size: 8               # compile + batch 8 = 22.1 GB peak / 32, no leak on
                             # torch 2.8. batch 10 = 27.7 GB (tight), 12 OOMs.
                             # see scripts/probe_compile.py for the sweep
-lr: 3.0e-4                  # tuned at batch 4; still fine at batch 8 (kept)
+lr: 1.0e-4                  # 3e-4 diverged in exp1 once aux tasks saturated
 weight_decay: 0.01
-grad_clip: 1.0
+grad_clip: 0.5              # 1.0 -> 0.5; exp1 saw train-loss spikes to ~0.9
 max_steps: 17000            # ~3 epochs over the 90-shard subset (~5500 steps/epoch
                             # at batch 8), ~2.7 h at ~1.7 it/s (compile). --resume
                             # runs/exp1/last.pt to continue if val still improving
