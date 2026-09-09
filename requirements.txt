@@ -1,11 +1,15 @@
-# Full training environment (RunPod / RTX 4090). The PyTorch base image already
+# Full training environment (RunPod / RTX 5090). The PyTorch base image already
 # ships torch+CUDA; this file adds the rest. Install order matters — see the
 # Dockerfile: blackboxprotobuf must go in with --no-deps (next section).
 #
 #   pip install -r requirements.txt
 #   pip install --no-deps blackboxprotobuf==1.0.1
 
-torch>=2.4
+# RTX 5090 / Blackwell (sm_120) needs torch >= 2.7 built for CUDA 12.8. The
+# Dockerfile base (pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel) already
+# satisfies this; on a stock RunPod template pick a "PyTorch 2.7+/CUDA 12.8"
+# one so pip doesn't try to pull a mismatched wheel over it.
+torch>=2.7
 numpy>=1.26
 pyyaml>=6.0
 einops>=0.7

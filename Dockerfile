@@ -1,4 +1,10 @@
-# InertNet — optional dependency image for RunPod / RTX 4090 (Ada, sm_89).
+# InertNet — optional dependency image for RunPod / RTX 5090 (Blackwell, sm_120).
+#
+# RTX 5090 needs CUDA 12.8 + PyTorch >= 2.7 (first release with prebuilt sm_120
+# wheels). The old 2.4.1 / cuda12.4 base will NOT run on Blackwell at all
+# ("no kernel image is available for execution on the device"). torch 2.8 also
+# clears the 2.4.1 inductor bug that leaked CUDA memory under torch.compile, so
+# `compile: true` is worth re-testing on this base (retest before a long run).
 #
 # You usually DON'T need this: a stock RunPod "PyTorch" template already has
 # CUDA + sshd, and `scripts/pod_setup.sh` installs the rest onto the network
@@ -12,7 +18,7 @@
 #
 #   docker build -t <you>/inertnet:deps . && docker push <you>/inertnet:deps
 
-FROM pytorch/pytorch:2.4.1-cuda12.4-cudnn9-devel
+FROM pytorch/pytorch:2.8.0-cuda12.8-cudnn9-devel
 
 ENV DEBIAN_FRONTEND=noninteractive \
     PYTHONUNBUFFERED=1 \
@@ -29,8 +35,11 @@ COPY requirements.txt /tmp/requirements.txt
 RUN pip install -r /tmp/requirements.txt \
  && pip install --no-deps blackboxprotobuf==1.0.1
 
-# Optional fused Mamba kernels (needs this -devel base for nvcc):
-# RUN pip install "causal-conv1d>=1.4.0" "mamba-ssm>=2.2.2"
+# Optional fused Mamba kernels (needs this -devel base for nvcc). On Blackwell
+# there are no prebuilt wheels — these compile from source against sm_120, which
+# needs recent versions and a few minutes:
+# RUN CAUSAL_CONV1D_FORCE_BUILD=TRUE MAMBA_FORCE_BUILD=TRUE \
+#     pip install "causal-conv1d>=1.5.0" "mamba-ssm>=2.2.4"
 
 COPY scripts/start.sh /start.sh
 RUN chmod +x /start.sh
