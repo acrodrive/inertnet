@@ -76,7 +76,17 @@ and it was most of the story:
    lanes while generating the far future. Long-horizon ADE (3.4 m @ 5 s) and
    MR 0.56 are where this would pay off.
 
-## Next steps (in order)
+## Next steps
+
+**Decision pending (start here after the break):** exp6 vs. straight to the
+ablation.
+- exp6 (query decoder) is real new code (~half a day dev + ~4 h train) and the
+  HANDOFF's own estimate is minADE ~1.3 → ~1.1 — a ~0.2 m gain.
+- The deliverable is the *ablation* + narrative, not the absolute number. exp5
+  already gives minADE 1.29 and a clear occlusion signal (occluded 1.75 vs clean
+  1.25), which is enough to carry the write-up.
+- **Recommendation: lock `configs/exp5.yaml` (drop lr to 1e-4) and go to the
+  ablation now.** Treat exp6 as an optional stretch if the ablation lands early.
 
 ### exp5 — scale up — DONE (2026-09-10). minADE 1.87 → 1.25 (best.pt @ 26k).
 - Final recipe: `configs/exp5.yaml` — d_model 256, mamba_layers 6,
