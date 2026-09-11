@@ -69,7 +69,11 @@ val_every: 2000
 ckpt_dir: "runs/ablation_attn"
 num_workers: 6
 seed: 0
-amp: false
+amp: true                  # unlike mamba/gru, compile is off here (see below),
+                          # so amp is the only speedup available — fixed
+                          # 2026-09-11 (was mistakenly copied as false from
+                          # exp5.yaml, where compile:true makes amp moot;
+                          # attn has neither on until this fix, worst of both)
 compile: false             # see header — attn's graph grows per step
 device: "cuda"
 

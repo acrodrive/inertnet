@@ -137,8 +137,12 @@ def main() -> None:
     gru_lr = sweep_and_pick("ablation_gru_sweep", "configs/ablation_gru.yaml", batch_size=4)
     gru_cfg = full_run("ablation_gru", "configs/ablation_gru.yaml", gru_lr, batch_size=4)
 
+    # sweep stays at batch_size=2 (lr-picking only, cheap); the full run uses
+    # batch_size=4 to match mamba/gru (2026-09-11: measured feasible with amp
+    # on -- 24.8/32.6 GB, no OOM -- removes the batch-size fairness caveat at
+    # the cost of ~+1.6h wall clock for this arm's full run).
     attn_lr = sweep_and_pick("ablation_attn_sweep", "configs/ablation_attn.yaml", batch_size=2)
-    attn_cfg = full_run("ablation_attn", "configs/ablation_attn.yaml", attn_lr, batch_size=2)
+    attn_cfg = full_run("ablation_attn", "configs/ablation_attn.yaml", attn_lr, batch_size=4)
 
     mamba_cfg = full_run("ablation_mamba", "configs/exp5.yaml", 2e-4, batch_size=4)
 
