@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import torch
 import torch.nn as nn
+from torch.utils.checkpoint import checkpoint
 
 from .mamba_block import MambaStack
 
@@ -55,10 +56,20 @@ class CausalAttnEncoder(nn.Module):
         t = seq.size(1)
         h = seq + self.pos[:t][None]
         for layer in self.layers:
-            h = layer(h)
+            # hybrid.py's outer per-step checkpoint is disabled for "attn"
+            # (the growing seq length breaks its replay), but that leaves the
+            # whole re-run-every-step transformer stack un-checkpointed ->
+            # O(T^2) *activation memory*, not just O(T^2) compute. Checkpoint
+            # each layer call instead: same recompute cost, but only this
+            # call's activations are live at once. Safe across the growing
+            # sequence since each checkpoint call is self-contained (no state
+            # spans steps here, unlike the outer loop).
+            if self.training and h.requires_grad:
+                h = checkpoint(layer, h, use_reentrant=False)
+            else:
+                h = layer(h)
         # keep the raw inputs (not activations) as state -> full BPTT, O(T^2)
-        # memory. This cost is exactly what the thesis argues against; run this
-        # baseline with grad_checkpoint: false and a smaller batch.
+        # compute. This cost is exactly what the thesis argues against.
         return h[:, -1], [seq]
 
 

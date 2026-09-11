@@ -1,25 +1,69 @@
 # Baseline C (spec 3.4.2): GRU hybrid. Isolates "any recurrence" vs "Mamba".
+# Matched to configs/exp5.yaml (the locked mamba recipe) so the only real
+# difference across the ablation is the encoder: d_model/depth/heads/loss
+# weights/EWTA/batch/steps all mirror exp5. `mamba_layers` is reused as GRU
+# depth (GRUEncoder reads cfg.mamba_layers, see model/encoders.py).
+# lr is set by scripts/make_sweep_configs.py during the short sweep, then
+# hand-set to the sweep winner for the full run (see HANDOFF.md).
+
+# ---- data (identical to exp5) ----
 train_shards: "/workspace/datasets/waymo/motion/training/training.tfrecord-000[0-8]*-of-01000"
 val_shards:   "/workspace/datasets/waymo/motion/validation/validation.tfrecord-*-of-00150"
-cache_dir: null             # see configs/default.yaml
+cache_dir: null
 n_slots: 300
+fov_radius: 100.0
 max_map_tokens: 256
+poly_points: 20
+pos_scale: 50.0
+vel_scale: 10.0
+size_scale: 10.0
+occlusion_prob: 0.5
+occlusion_max_gaps: 2
+random_rotate: true
+subtract_ego_velocity: false
 
+# ---- model (matched to exp5 scale; only encoder differs) ----
 encoder: "gru"
-d_model: 128
-mamba_layers: 4          # reused as GRU depth
-decoder_layers: 2
-n_heads: 4
+d_model: 256
+mamba_layers: 6             # reused as GRU depth (param-count match, not scan)
+decoder_layers: 4
+n_heads: 8
 n_modes: 6
 horizon: 50
 warmup_steps: 10
 min_future_steps: 10
 grad_checkpoint: true
 
+# ---- loss weights (identical to exp5 — EWTA anneal is automatic in losses.py) ----
+lambda_aux: 0.5
+lambda_next: 0.5
+lambda_recon_ft: 1.0
+lambda_recon_fupd: 1.0
+lambda_traj: 5.0
+lambda_mode: 1.0
+
+# ---- optim ----
 batch_size: 4
-lr: 3.0e-4
-max_steps: 120000
+lr: 1.0e-4                 # placeholder — overwritten by the lr sweep, then set
+                          # to the sweep winner for the full run.
+weight_decay: 0.01
+grad_clip: 0.5
+max_steps: 20000            # step-matched across all 3 arms (see HANDOFF.md
+                          # 2026-09-11: mamba/gru/attn each retrained fresh at
+                          # 20k so warmup/decay schedule shape is identical —
+                          # reusing exp5's 35k-schedule checkpoint at some
+                          # earlier step would leave it under-annealed relative
+                          # to a schedule that actually ends there)
+warmup_iters: 1000
+log_every: 50
+val_every: 2000
 ckpt_dir: "runs/ablation_gru"
+num_workers: 6
+seed: 0
+amp: false
+compile: true             # GRU has no growing per-step graph — compiles fine.
 device: "cuda"
-wandb: true
+
+# ---- logging ----
+wandb: false
 wandb_project: "inertnet"

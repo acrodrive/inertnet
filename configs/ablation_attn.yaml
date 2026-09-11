@@ -1,26 +1,78 @@
 # Baseline B (spec 3.4.2): Transformer-only. Same everything, Mamba -> causal
 # self-attention over past inputs. This is the model the thesis argues against.
+#
+# Measured (2026-09-11): CANNOT match exp5's scale (d_model 256, depth 6).
+# CausalAttnEncoder re-runs the whole growing sequence through every layer at
+# every one of ~90 outer timesteps with no outer checkpointing (state grows,
+# breaks checkpoint replay) — activation memory is O(T^2 x d x layers x
+# batch*n_slots). At d_model 256 this OOMs at 32 GB even at batch_size=1 with
+# per-layer gradient checkpointing added (model/encoders.py); the one config
+# that didn't OOM did <10 steps in 240 s (~35k steps -> multiple days).
+# Decision: keep attn at its original, memory-feasible scale (d_model 128,
+# depth 4) rather than match exp5's width — this is the documented fairness
+# caveat for this arm (HANDOFF.md / spec 3.4.2 "attn can't use
+# grad_checkpoint/compile ... match what you can: params, data, steps, lr").
+# Everything else (data, loss weights, EWTA, steps, lr sweep) matches exp5.
+# lr is set by scripts/make_sweep_configs.py during the short sweep, then
+# hand-set to the sweep winner for the full run.
+
+# ---- data (identical to exp5) ----
 train_shards: "/workspace/datasets/waymo/motion/training/training.tfrecord-000[0-8]*-of-01000"
 val_shards:   "/workspace/datasets/waymo/motion/validation/validation.tfrecord-*-of-00150"
-cache_dir: null             # see configs/default.yaml
+cache_dir: null
 n_slots: 300
+fov_radius: 100.0
 max_map_tokens: 256
+poly_points: 20
+pos_scale: 50.0
+vel_scale: 10.0
+size_scale: 10.0
+occlusion_prob: 0.5
+occlusion_max_gaps: 2
+random_rotate: true
+subtract_ego_velocity: false
 
+# ---- model (kept at original scale — see header; NOT matched to exp5's 256/6) ----
 encoder: "attn"
 d_model: 128
-mamba_layers: 4          # reused as encoder depth
+mamba_layers: 4              # causal-attn encoder depth
 decoder_layers: 2
 n_heads: 4
 n_modes: 6
 horizon: 50
 warmup_steps: 10
 min_future_steps: 10
-grad_checkpoint: false   # attn keeps full O(T^2) graph; checkpoint conflicts
+grad_checkpoint: false      # outer per-step checkpoint always off for attn
+                          # (hybrid.py); inner per-layer checkpoint is now
+                          # unconditional in CausalAttnEncoder (encoders.py)
 
-batch_size: 2
-lr: 3.0e-4
-max_steps: 120000
+# ---- loss weights (identical to exp5 — EWTA anneal is automatic in losses.py) ----
+lambda_aux: 0.5
+lambda_next: 0.5
+lambda_recon_ft: 1.0
+lambda_recon_fupd: 1.0
+lambda_traj: 5.0
+lambda_mode: 1.0
+
+# ---- optim ----
+batch_size: 2                # measured feasible at d_model 128/depth 4 — confirm
+                          # actual it/s with a smoke run before the full sweep
+lr: 1.0e-4                 # placeholder — overwritten by the lr sweep, then set
+                          # to the sweep winner for the full run.
+weight_decay: 0.01
+grad_clip: 0.5
+max_steps: 20000            # step-matched across all 3 arms — see
+                          # configs/ablation_gru.yaml header / HANDOFF.md
+warmup_iters: 1000
+log_every: 50
+val_every: 2000
 ckpt_dir: "runs/ablation_attn"
+num_workers: 6
+seed: 0
+amp: false
+compile: false             # see header — attn's graph grows per step
 device: "cuda"
-wandb: true
+
+# ---- logging ----
+wandb: false
 wandb_project: "inertnet"
