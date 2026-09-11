@@ -2,6 +2,66 @@
 
 Working notes so the next session picks up cleanly. Delete when stale.
 
+## ⚠️ Known methodology caveats (found via full-project code review, 2026-09-11)
+
+Found late in this session, after the ablation was already ~24h in. **Decision:
+let the running ablation finish as-is** — all five affect mamba/gru/attn
+identically (same shared code path), so the ablation's core deliverable, the
+**relative** mamba-vs-gru-vs-attn ranking (esp. the occlusion-gap comparison),
+stays valid. What's compromised is the **absolute** numbers and one entire
+evaluation axis. Must be disclosed in the write-up; #2 is cheap to fix without
+retraining (see below).
+
+1. **TrajectoryHead's coordinate anchor leaks ground truth**
+   (`model/hybrid.py:131-133`). `traj_head(f_upd_t, batch["gt_pos"][:,:,t,:2],
+   batch["gt_heading"][:,:,t])` — the local-frame offset prediction is rotated
+   back to scene space using the *true, pre-occlusion* GT position/heading at
+   step `t` as origin, not the model's own recovered estimate. When `t`
+   (including eval's fixed `t0`) falls inside a synthetic-occlusion gap, the
+   model is handed the exact answer to "where am I right now" for free before
+   it even has to predict the future — the hard part of occlusion recovery is
+   bypassed for the trajectory task specifically (GTHead's own reconstruction
+   loss/metric, `recon_ade_ft`/`fupd`, is NOT affected — that's a separate,
+   correctly-isolated head/metric). **Effect**: reported "occluded" minADE/FDE
+   and the occluded-vs-clean gap are optimistically biased for all three arms
+   equally. The relative ranking survives; "our occlusion gap is only 0.5 m"
+   as an absolute claim does not, without this caveat.
+   Real fix (needs retraining): anchor on the model's own `GTHead(f_upd_t)`
+   position estimate instead of `batch["gt_pos"]`.
+2. **"occluded" vs "clean" val slice is a tautology equal to `synth_mask`**
+   (`metrics.py:58`): `had_gap = synth_mask | (recon_mask & ~obj_valid)`
+   algebraically reduces to exactly `synth_mask` (since `obj_valid == valid &
+   ~synth_mask` and `synth_mask` already implies `valid`). Tracks with a real
+   natural gap (`gt_valid=False` mid-track) but no synthetic gap injected
+   (occlusion_prob roll didn't fire) are always bucketed as "clean" —
+   spec 3.3.2/3.4.3's "자연 Occlusion 실검증" axis is currently **not measured
+   at all**, silently merged into "clean". **This one is cheap to fix without
+   retraining**: correct the mask (e.g. track natural-invalid separately from
+   synth_mask, or check `gt_valid==False` history directly) and re-run
+   `evaluate()`/`diagnose_ckpt.py` on the already-saved checkpoints once
+   training finishes — no need to redo any of the ~32h of training.
+3. **L_recon trains on all originally-valid steps, not just synthetically-masked
+   ones** (`losses.py:36`, `_recon_term` uses `batch["recon_mask"]` = `valid &
+   slot_mask`, not intersected with `synth_mask`). Spec 3.2.6 says L_recon
+   should fire "인위적으로 마스킹한 스텝에서만". Most of the recon loss mass
+   comes from trivial, never-hidden steps, diluting the occlusion-recovery
+   training signal (the reported eval metric `occlusion_reconstruction_error`
+   is correctly isolated via `synth_mask` already — this is a training-signal
+   dilution issue, not a reporting bug). Needs retraining to fix properly.
+4. **Constant-velocity baseline (Baseline A) sees through occlusion**
+   (`baselines.py:34`): reads `gt_valid`/`gt_pos` (pre-occlusion) directly
+   instead of `obj_valid`/the post-occlusion input, so it always extrapolates
+   from the true last observation even when the model's input was zeroed.
+   Makes Baseline A stronger than it should be on occlusion-affected tracks —
+   biases the comparison to be *more* conservative about the models' win
+   over CV, not less. Low priority.
+5. **`subtract_ego_velocity: false` in every shipped config** (all of exp1-5,
+   ablation_*.yaml) — spec 3.1.1 calls for ego-relative vx/vy (subtract SDC's
+   own t0 velocity); every run so far has trained on velocities that still
+   carry the ego's own t0-frame velocity component. Same for all three arms,
+   so relative comparison unaffected, but a real deviation from the spec's
+   stated "pure relative motion" design intent. Needs retraining to fix.
+
 ## Where we are
 
 Following the prior session's decision, went straight to the ablation
