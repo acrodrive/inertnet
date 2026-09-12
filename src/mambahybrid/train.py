@@ -43,7 +43,7 @@ def evaluate(model, loader, cfg, device, max_batches: int = 50) -> dict:
         out = model(batch)
         tm = trajectory_metrics(out, batch, cfg)
         re = occlusion_reconstruction_error(out, batch, cfg)
-        for slc in ("all", "occluded", "clean"):
+        for slc in ("all", "occluded", "clean", "synth_occluded", "natural_occluded"):
             for k in ("minADE", "minFDE", "MissRate"):
                 v = tm[slc][k]
                 if v == v:  # not nan

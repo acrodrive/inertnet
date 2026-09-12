@@ -24,6 +24,7 @@ from torch.utils.data import DataLoader
 
 from mambahybrid.config import Config
 from mambahybrid.data import WOMDDataset, collate
+from mambahybrid.metrics import occlusion_gap_slices
 from mambahybrid.model import MambaHybrid
 from mambahybrid.train import evaluate, move
 
@@ -51,10 +52,10 @@ def _anchor_slice(out, batch, cfg):
     v0 = batch["gt_vel"][:, :, t0] * cfg.vel_scale            # [B,S,2] m/s
 
     sel = batch["is_focal"] & batch["slot_mask"] & gv.any(-1)  # [B,S]
-    had_gap = (batch["synth_mask"] | (batch["recon_mask"] & ~batch["obj_valid"]))
-    occ = had_gap[:, :, : t0 + 1].any(-1)
+    gaps = occlusion_gap_slices(batch, t0)
+    occ, nat = gaps["any"], gaps["natural"]
 
-    return (traj[sel], logits[sel], gt[sel], gv[sel], p0[sel], v0[sel], occ[sel])
+    return (traj[sel], logits[sel], gt[sel], gv[sel], p0[sel], v0[sel], occ[sel], nat[sel])
 
 
 def _ade_fde(pred, gt, gv):
@@ -100,26 +101,30 @@ def main():
     std = evaluate(model, loader, cfg, device, max_batches=args.max_batches)
     print("standard metrics (train.evaluate):")
     for k in ("all/minADE", "all/minFDE", "all/MissRate",
-              "occluded/minADE", "occluded/MissRate", "clean/minADE"):
+              "occluded/minADE", "occluded/MissRate", "clean/minADE",
+              "synth_occluded/minADE", "natural_occluded/minADE"):
         if k in std:
             print(f"  {k:22s} {std[k]:.3f}")
 
     T = tr = lg = None
-    traj_a, logit_a, gt_a, gv_a, p0_a, v0_a, occ_a = ([] for _ in range(7))
+    traj_a, logit_a, gt_a, gv_a, p0_a, v0_a, occ_a, nat_a = ([] for _ in range(8))
     with torch.no_grad():
         for i, batch in enumerate(loader):
             if i >= args.max_batches:
                 break
             batch = move(batch, device)
             out = model(batch)
-            t, l, g, gv, p0, v0, occ = _anchor_slice(out, batch, cfg)
+            t, l, g, gv, p0, v0, occ, nat = _anchor_slice(out, batch, cfg)
             traj_a.append(t); logit_a.append(l); gt_a.append(g); gv_a.append(gv)
-            p0_a.append(p0); v0_a.append(v0); occ_a.append(occ)
+            p0_a.append(p0); v0_a.append(v0); occ_a.append(occ); nat_a.append(nat)
     traj = torch.cat(traj_a); logit = torch.cat(logit_a); gt = torch.cat(gt_a)
-    gv = torch.cat(gv_a); p0 = torch.cat(p0_a); v0 = torch.cat(v0_a); occ = torch.cat(occ_a)
+    gv = torch.cat(gv_a); p0 = torch.cat(p0_a); v0 = torch.cat(v0_a)
+    occ = torch.cat(occ_a); nat = torch.cat(nat_a)
     n = traj.shape[0]
     K, N = cfg.n_modes, cfg.horizon
-    print(f"\nfocal agents @ t0: {n}   (occluded {int(occ.sum())}, clean {int((~occ).sum())})")
+    print(f"\nfocal agents @ t0: {n}   (occluded {int(occ.sum())} "
+          f"[synthetic {int((occ & ~nat).sum())} / natural {int(nat.sum())}], "
+          f"clean {int((~occ).sum())})")
 
     # ---- multimodality ----
     ade_k, fde_k = _ade_fde(traj, gt, gv)                     # [n,K]
@@ -173,8 +178,9 @@ def main():
     print(f"  GT {gtd.mean():.1f} m   model {pmd.mean():.1f} m   CV {cvd.mean():.1f} m"
           f"   (model << GT => regressing to a short/straight mean)")
 
-    # ---- occluded vs clean (best-of-K) ----
-    for name, m in (("clean", ~occ), ("occluded", occ)):
+    # ---- occluded vs clean (best-of-K), occluded split synthetic/natural ----
+    for name, m in (("clean", ~occ), ("occluded", occ),
+                    ("  synth", occ & ~nat), ("  natural", nat)):
         if m.any():
             print(f"\n  [{name:8s}] minADE_K {ade_best[m].mean():.3f}  "
                   f"minFDE_K {fde_best[m].mean():.3f}  n={int(m.sum())}")

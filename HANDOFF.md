@@ -1,6 +1,55 @@
-# Session handoff — 2026-09-11
+# Session handoff — 2026-09-11 (updated 2026-09-12)
 
 Working notes so the next session picks up cleanly. Delete when stale.
+
+## 2026-09-12 update: pod was terminated mid-mamba-run, restarted clean
+
+The pod running the ablation driver got killed externally (no error in the
+log — loss was normal at step 4950, then the process just vanished; GPU was
+idle, no process running when this session picked it back up). Status found:
+**gru and attn had both already finished their full 20k runs** (confirmed via
+`log.jsonl` max step = 20000 for both, `best.pt`/`last.pt` present). Only
+**mamba's full run** was affected — it had reached **step 4950/20000 (~25%)**
+before dying.
+
+Two hazards found and avoided:
+1. `run_training()` in `scripts/run_ablation.py` never passes `--resume` —
+   simply rerunning the driver would have silently restarted mamba from
+   scratch (fine) but with `log.jsonl` opened in append mode, so the old
+   step-50..4950 records would stay mixed in before the new run's own
+   step-50..20000 records. Handled by moving the old dir aside first:
+   `runs/ablation_mamba_terminated_step4950_0912/` (kept for reference, not
+   used by anything).
+2. `train.py`'s own `--resume` path (`train.py:96-116`) restores `step` from
+   the checkpoint but **not** the LR scheduler's internal counter (`sched` is
+   constructed fresh before the resume block) — resuming would have replayed
+   warmup+cosine-decay from scratch over the *remaining* steps instead of
+   continuing the same 20k-step curve gru/attn used. This would have quietly
+   broken the step-matched-schedule fairness protocol (see caveat further
+   down). Not fixed (wasn't needed) — **flagging it here because it's a real
+   latent bug** if anyone reaches for `--resume` on this codebase in the
+   future; fix would be to also restore/fast-forward `sched`'s `last_epoch`
+   (or just recompute lr via `lr_lambda(step, cfg)` and set it directly each
+   iteration instead of relying on `LambdaLR`'s own counter).
+
+**Decision made and executed**: restarted mamba's full run clean from step 0
+(`runs/ablation_mamba/`), same config/lr/batch as before
+(`configs/ablation_mamba_final.yaml`, lr 2e-4, batch 4, 20k steps). Verified
+env first (fresh pod needed the same `blackboxprotobuf` +
+`pip install --no-deps -e .` reinstall dance as the prior session — see "How
+to run" below; torch 2.8.0+cu128 / 5090 was already fine this time, no
+reinstall needed there). Driver relaunched via the same
+`nohup python -u scripts/run_ablation.py > runs/ablation_driver.log 2>&1 &`
+at 2026-09-12 12:38:43 — gru/attn stages skip instantly (already done),
+mamba is training fresh (confirmed via GPU util 91%/32GB and process
+running). Expected ~4.8h from relaunch for mamba alone, then the driver
+auto-runs `diagnose_ckpt.py` on all three and writes
+`runs/ablation_report.txt`. **Next session: just check
+`tail -f runs/ablation_driver.log` and `runs/ablation_report.txt` — if the
+driver ran to completion, the "After the driver finishes" section below is
+the next step. If the pod died again mid-run, repeat this same restart
+recipe (archive the partial `runs/ablation_mamba/` dir, relaunch the driver
+— gru/attn will skip, mamba restarts clean).**
 
 ## ⚠️ Known methodology caveats (found via full-project code review, 2026-09-11)
 
@@ -28,18 +77,15 @@ retraining (see below).
    as an absolute claim does not, without this caveat.
    Real fix (needs retraining): anchor on the model's own `GTHead(f_upd_t)`
    position estimate instead of `batch["gt_pos"]`.
-2. **"occluded" vs "clean" val slice is a tautology equal to `synth_mask`**
-   (`metrics.py:58`): `had_gap = synth_mask | (recon_mask & ~obj_valid)`
-   algebraically reduces to exactly `synth_mask` (since `obj_valid == valid &
-   ~synth_mask` and `synth_mask` already implies `valid`). Tracks with a real
-   natural gap (`gt_valid=False` mid-track) but no synthetic gap injected
-   (occlusion_prob roll didn't fire) are always bucketed as "clean" —
-   spec 3.3.2/3.4.3's "자연 Occlusion 실검증" axis is currently **not measured
-   at all**, silently merged into "clean". **This one is cheap to fix without
-   retraining**: correct the mask (e.g. track natural-invalid separately from
-   synth_mask, or check `gt_valid==False` history directly) and re-run
-   `evaluate()`/`diagnose_ckpt.py` on the already-saved checkpoints once
-   training finishes — no need to redo any of the ~32h of training.
+2. ~~**"occluded" vs "clean" val slice is a tautology equal to `synth_mask`**~~
+   **FIXED 2026-09-12** — see "2026-09-12 update #2" below for the fix and
+   the (significant) corrected result. Original text kept for context: the
+   old `had_gap = synth_mask | (recon_mask & ~obj_valid)` algebraically
+   reduced to exactly `synth_mask` (since `obj_valid == valid & ~synth_mask`
+   and `synth_mask` already implies `valid`), so every natural-gap track
+   (`gt_valid=False` mid-track, no synthetic gap injected) was silently
+   bucketed as "clean" — spec 3.3.2/3.4.3's "자연 Occlusion 실검증" axis was
+   not measured at all.
 3. **L_recon trains on all originally-valid steps, not just synthetically-masked
    ones** (`losses.py:36`, `_recon_term` uses `batch["recon_mask"]` = `valid &
    slot_mask`, not intersected with `synth_mask`). Spec 3.2.6 says L_recon
@@ -61,6 +107,53 @@ retraining (see below).
    carry the ego's own t0-frame velocity component. Same for all three arms,
    so relative comparison unaffected, but a real deviation from the spec's
    stated "pure relative motion" design intent. Needs retraining to fix.
+
+## 2026-09-12 update #2: caveat #2 fixed — natural-occlusion slice now measured, and it changes the headline conclusion
+
+Added `occlusion_gap_slices()` to `metrics.py`: `synth` (synth_mask fired, up
+to t0), `natural` (a real `gt_valid=False` mid-track gap — invalid strictly
+between the track's first and last valid step, so track start/end is not
+miscounted as a gap — with no synthetic gap), `any` = `synth | natural`.
+`trajectory_metrics()` now returns `synth_occluded`/`natural_occluded` slices
+alongside the existing `all`/`occluded`/`clean`; `train.py`'s `evaluate()`
+aggregates them too; `diagnose_ckpt.py`'s duplicate of the old buggy mask
+logic was replaced with a call to the shared helper. Verified with a
+synthetic-batch sanity check (leading/trailing invalid correctly NOT counted
+as a gap, mid-track invalid correctly counted, synth vs natural correctly
+disjoint) and `tests/test_pipeline.py` (updated for the new keys, 3/3 pass).
+**No retraining needed** — re-ran `scripts/run_ablation.py` (all three
+training stages skip instantly since already at their target step; only the
+final `diagnose_ckpt.py` pass re-executes) to regenerate
+`runs/ablation_report.txt` against the already-saved `best.pt` checkpoints.
+
+**Corrected result (val split, n=1418 focal @ t0; 1248 clean / 125 synth /
+45 natural — identical split and gap population across all three arms since
+occlusion sampling is seeded independently of the model):**
+
+| arm   | clean minADE | synth-occ minADE | natural-occ minADE | synth gap | natural gap |
+|-------|-------------:|------------------:|--------------------:|----------:|------------:|
+| mamba | 1.259 | 1.733 | 1.786 | +0.474 | +0.527 |
+| gru   | 1.349 | 1.732 | 1.776 | +0.383 | +0.427 |
+| attn  | 1.479 | 2.114 | 1.972 | +0.635 | +0.493 |
+
+**This changes the ablation's interpretation.** mamba still wins on raw
+`all/minADE` (1.323 vs gru 1.402 vs attn 1.524, unchanged by this fix — that
+part of the pipeline was never buggy). But on the occlusion-*recovery*
+comparison specifically — this project's actual thesis
+("Mamba-based inertial maintenance beats GRU/Transformer under
+occlusion") — **mamba and gru are statistically indistinguishable on both
+synth (1.733 vs 1.732) and natural (1.786 vs 1.776) occlusion, and gru has
+the smaller gap-from-clean on both axes.** mamba's overall edge looks driven
+by the *clean* slice (1.259 vs 1.349), not by occlusion robustness. attn is
+worst on synth as expected (smallest capacity, per caveat above) but not
+worst on natural gap. Caveats on this reading: n=45 for the natural slice is
+small (wide CI, don't over-read small deltas there), and caveat #1
+(GT-anchor leak) and caveat #3 (recon loss diluted) still apply equally to
+all three arms so the absolute numbers still carry those biases. **This is
+the headline result the write-up needs to report honestly** — the
+mamba-specific occlusion-robustness hypothesis is not supported by this
+ablation as run; the actual finding is "recurrent state (mamba OR gru) beats
+attention here," not "mamba beats gru."
 
 ## Where we are
 

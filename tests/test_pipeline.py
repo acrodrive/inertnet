@@ -57,7 +57,7 @@ def test_end_to_end():
         out = model(batch)
     tm = trajectory_metrics(out, batch, cfg)
     re = occlusion_reconstruction_error(out, batch, cfg)
-    assert set(tm) == {"all", "occluded", "clean"}
+    assert set(tm) == {"all", "occluded", "clean", "synth_occluded", "natural_occluded"}
     assert "recon_ade_ft" in re
     print("OK", {k: v["n"] for k, v in tm.items()}, "recon n:", re["n"])
 

@@ -9,6 +9,40 @@ from __future__ import annotations
 import torch
 
 
+def _internal_gap(valid: torch.Tensor) -> torch.Tensor:
+    """valid: [...,T] bool observability. True where there is an invalid step
+    strictly within [first valid, last valid] for that track -- i.e. a real
+    mid-track disappearance/reappearance, not just the track not having
+    started yet or having already ended. Slots with no valid step at all
+    (padding) return False."""
+    T = valid.shape[-1]
+    idx = torch.arange(T, device=valid.device)
+    first = torch.where(valid, idx, torch.full_like(idx, T)).amin(-1)
+    last = torch.where(valid, idx, torch.full_like(idx, -1)).amax(-1)
+    in_span = (idx >= first[..., None]) & (idx <= last[..., None])
+    return (in_span & ~valid).any(-1)
+
+
+def occlusion_gap_slices(batch: dict, t0: int) -> dict:
+    """Disjoint history-gap categories for the focal-agent occlusion slice,
+    over steps [0, t0]:
+      synth   -- synthetic occlusion fired (the trained-on signal; ground
+                 truth is known, so this is the direct-supervision case)
+      natural -- a real `gt_valid=False` mid-track gap with NO synthetic gap
+                 (spec 3.3.2's "자연 Occlusion 실검증" axis)
+      any     -- synth | natural
+
+    Before this fix, `synth_mask` and `recon_mask & ~obj_valid` were
+    algebraically identical (obj_valid == gt_valid & ~synth_mask, and
+    synth_mask is only ever set within originally-valid ranges), so the old
+    "occluded" slice silently reduced to synth-only and every natural-gap
+    track was miscounted as "clean". See HANDOFF 2026-09-11 caveat #2.
+    """
+    synth = batch["synth_mask"][:, :, : t0 + 1].any(-1)
+    natural = _internal_gap(batch["gt_valid"][:, :, : t0 + 1]) & ~synth
+    return {"synth": synth, "natural": natural, "any": synth | natural}
+
+
 @torch.no_grad()
 def trajectory_metrics(out: dict, batch: dict, cfg, miss_thresh: float = 2.0) -> dict:
     elig = out["elig_idx"]
@@ -54,14 +88,16 @@ def trajectory_metrics(out: dict, batch: dict, cfg, miss_thresh: float = 2.0) ->
             "n": int(m.sum().item()),
         }
 
-    # occlusion slice: focal agents that had ANY masked/occluded history step
-    had_gap = (batch["synth_mask"] | (batch["recon_mask"] & ~batch["obj_valid"]))
-    had_gap = had_gap[:, :, : t0 + 1].any(-1)
+    # occlusion slice: focal agents that had a masked/occluded history step,
+    # split into the synthetic (trained-on) and natural (실검증) axes.
+    gaps = occlusion_gap_slices(batch, t0)
 
     return {
         "all": slice_metrics(None),
-        "occluded": slice_metrics(had_gap),
-        "clean": slice_metrics(~had_gap),
+        "occluded": slice_metrics(gaps["any"]),
+        "clean": slice_metrics(~gaps["any"]),
+        "synth_occluded": slice_metrics(gaps["synth"]),
+        "natural_occluded": slice_metrics(gaps["natural"]),
     }
 
 
